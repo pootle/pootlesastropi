@@ -12,16 +12,35 @@ TWOPI=math.pi*2
 HALFPI=math.pi/2
 TWELFTHPI=math.pi/12
 
+def FromString(fs):
+    parts = fs.split(' ',1)
+    typestr = parts[0].strip()
+    if typestr=='lat':
+        return latVal(parts[1])
+    if typestr=='lon':
+        return lonVal(parts[1])
+    if typestr=='alt':
+        return altVal(parts[1])
+    if typestr=='az':
+        return azVal(parts[1])
+    if typestr=='RA':
+        return raVal(parts[1])
+    if typestr=='DEC':
+        return decVal(parts[1])
+    raise ValueError
+
 class degradval():
     """
     a little class to store angles as degrees / radians, allowing either to be set / read and
-    laziliy evaluating the other on demand. Hours can also be read, but are always calculated from 
+    laziliy evaluating the other on demand. Hours can also be read and set, but are always calculated from 
     degrees. All values are automatically wrapped to lie within the allowed range when set.
     
     Smart formatting is available using some extensions to the format string syntax as detailed in format.
   
     Also for parsing from strings, special characters can be defined (such as 'E' or 'S' which will be treated
     as the sign of the result.
+    
+    Basic functionality for callbacks on read / write access are also provided.
     """
     def __init__(self, v, vas='d'):
         """
@@ -43,24 +62,31 @@ class degradval():
         
         """
         cval, ctype = self._cleanval(v,vas)
-        self._dval=None
-        self._rval=None
+        self._rval = None
+        self._dval = None
+        self._changeWatchers = None
+        self._readWatchers = None # this may be handy for diagnostics......
+        self._wcounter=0
+        self.set(v, vas)
+
+    def set(self, v, vas='d'):
+        cval, ctype = self._cleanval(v,vas)
         if ctype=='r':
-            self._rval=cval
-            self._dval=None
+            self.rad=cval
         elif ctype=='d':
-            self._dval=cval
-            self._rval=None
+            self.deg=cval
         else:
-            self._dval=cval*15
-            self._rval=None
+            self.deg=cval*15
 
     @property
     def deg(self):
         """
         see __init__ for details on valid types / formats
         """
+        self._notifyAccess()
         if self._dval is None:
+            if self._rval is None:
+                return None
             self._dval=math.degrees(self._rval)
         return self._dval
 
@@ -75,13 +101,19 @@ class degradval():
         if newval != self.deg:
             self._dval = newval
             self._rval = None
+            self._notifyChange()
+        else:
+            self._notifyAccess()
 
     @property
     def rad(self):
         """
         see __init__ for details on valid types / formats
         """
+        self._notifyAccess()
         if self._rval is None:
+            if self._dval is None:
+                return None
             self._rval=math.radians(self._dval)
         return self._rval
 
@@ -96,13 +128,20 @@ class degradval():
         if newval != self.rad:
             self._rval = newval
             self._dval = None
+            self._notifyChange()
+        else:
+            self._notifyAccess()
 
     @property
     def hour(self):
         """
         see __init__ for details on valid types / formats
         """
-        return self.deg/15
+        self._notifyAccess()
+        try:
+            return self.deg/15
+        except:
+            return None
 
     @hour.setter
     def hour(self,hval):
@@ -116,6 +155,48 @@ class degradval():
         if self._dval != newval:
             self._dval=newval
             self._rval = None
+            self._notifyChange()
+        else:
+            self._notifyAccess()
+
+    def setWatch(self, wf, onchange, onread=False):
+        """
+        anyone interested can nominate a callback to trigger on update or access.
+        It returns an id that can later be used to cancel interest
+        """
+        self._wcounter += 1
+        if onchange:
+            if self._changeWatchers is None:
+                self._changeWatchers = {self._wcounter: wf}
+            else:
+                self._changeWatchers[self._wcounter]=wf
+        if onread:
+            if self._readWatchers is None:
+                self._readWatchers = {self._wcounter: wf}
+            else:
+                self._readWatchers[self._wcounter]=wf
+        return self._wcounter
+
+    def stopWatch(self,wk, wf):
+        """
+        cancel a callback on update or access.
+        """
+        assert (not self._changeWatchers is None and self._changeWatchers.get(wk, None) == wf
+                ) or (not self._readWatchers is None and self._readWatchers.get(wk, None) == wf), "unwatch key and callback do not match"
+        if not self._changeWatchers is None:
+            self._changeWatchers.pop(wk, None)
+        if not self._readWatchers is None:
+            self._readWatchers.pop(wk, None)
+
+    def _notifyAccess(self):
+        if not self._readWatchers is None:
+            for wk, wf in self._readWatchers.items():
+                wf(wk, self)
+
+    def _notifyChange(self):
+        if not self._changeWatchers is None:
+            for wk, wf in self._changeWatchers.items():
+                wf(wk, self)
 
     def _cleanval(self, val, units):
         if type(self) == type(val):
@@ -153,11 +234,16 @@ class degradval():
                         break
                 else:
                     endsign=1
+                if tstr.startswith('+'):
+                    tstr = tstr[1:]
+                elif tstr.startswith('-'):
+                    tstr = tstr[1:]
+                    endsign *= -1
                 colonsplit=tstr.split(':')
                 if len(colonsplit)==3:
-                    newval = int(colonsplit[0]) + int(colonsplit[1]) / 60 + float(colonsplit[2]) / 3600
+                    newval = (int(colonsplit[0]) + int(colonsplit[1]) / 60 + float(colonsplit[2]) / 3600) * endsign
                 else:
-                    newval = float(tstr)
+                    newval = float(tstr) * endsign
 
         offset, cyclic = self.valConstraints(utype)
         newval = (newval+offset)%cyclic-offset
@@ -176,20 +262,22 @@ class degradval():
         'h': hours
         
         The second character defines whether to format as a single floating point number or as a sequence with minutes and
-        seconds. In either case a bunch of standard positional parameters are passed to format.
+        seconds. In either case a bunch of standard keyword parameters are passed to format.
         The second character defaults to's' for single. Any other character is interpreted as multinumber.
         single (float) number:
-            0: absolute value of the float
-            1: the complete unmodified float
-            2: the 'sign' character to use (typically a compass points, but strings such as 'up' and 'down' or 'cw' and 'ccw' 
+            'abs'    : absolute value of the float
+            'signed' : the complete unmodified float
+            'schar'  : the 'sign' character to use (typically a compass points, but strings such as 'up' and 'down' or 'cw' and 'ccw' 
                 can be used
+            'lab'    : the standard label string
         multi number:
-            0: absolutes value of the integer part of the value (as an int)
-            1: signed value of the integer part of the value (as an int)
-            2: minutes part of the value (1/60ths) as an int
-            3: seconds part of the value (1/3600) as an int
-            4: hundredths of a second (1/360000) as an int
-            5: the sign character to use
+            'abs'    : absolute value of the integer part of the value (as an int)
+            'signed' : signed value of the integer part of the value (as an int)
+            'min'    : minutes part of the value (1/60ths) as an int
+            'sec'    : seconds part of the value (1/3600) as an int
+            'frac'   : fractional part of a second (1/360000) as a float
+            'schar'  : the sign character to use
+            'lab'    : the standard label string
         """
         fspec = formatspec if formatspec else self.defaultFormat
         splitspec = fspec.split(';',1)
@@ -206,25 +294,37 @@ class degradval():
             else:
                 raise ValueError('Invalid format source value specifier for degradval >%s<' % fspec)
             if fmode == 's':
-                formparms=(abs(sval), sval, self.trailsign(sval))
+                formparms={'abs':abs(sval), 'signed':sval, 'schar':self.trailsign(sval), 'lab': self.defaultLabel}
                 basestr = splitspec[1] if splitspec[1] else self.defaultSingleFormat
             else:
                 posv = 1 if sval >= 0 else -1
                 prim, rest = divmod(abs(sval),1)
                 mins, rest = divmod(rest,1/60)
                 secs, fracs = divmod(rest,1/3600)
-                formparms = (int(prim), int(prim)*posv, int(mins), int(secs), int(fracs * 360000), self.trailsign(posv))
+                formparms = {
+                        'abs'    : int(prim)
+                      , 'signed' : int(prim)*posv
+                      , 'min'    : int(mins)
+                      , 'sec'    : int(secs)
+                      , 'frac'   : fracs * 3600
+                      , 'hund'   : round(fracs*360000)
+                      , 'schar'  : self.trailsign(posv)
+                      , 'lab'    : self.defaultLabel
+                    }
                 basestr = splitspec[1] if splitspec[1] else self.defaultMultiFormat
- 
-            return basestr.format(*formparms)
+            return basestr.format(**formparms)
         else:
             return self.deg.__format__(fspec)
 
-    defaultFormat = '5.3f'
+    defaultFormat = 'ds;'
+    
+    defaultLabel = ''
+    
+    defaultSingleFormat = '{lab}{signed:7.4f}'
 
-    defaultSingleFormat = '{1:7.4f}'
+    defaultMultiFormat = '{lab}{signed:3d}:{min:02d}:{sec:02d}.{hund:02d}'
 
-    defaultMultiFormat = '{1:3d}:{2:02d}:{3:02d}.{4:02d}'
+    trails = tuple()
 
     @staticmethod
     def trailsign(val):
@@ -236,6 +336,12 @@ class degradval():
         else:
             return '-ve'
 
+    @staticmethod
+    def valConstraints(utype):
+        return {'d':(0,360)
+              , 'r':(0, TWOPI)
+              , 'h':(0,24)}[utype]
+
 class latVal(degradval):
     """
     specialisation of degradval for latitude. 'N' & 'S' can be used to indicate sign on input strings
@@ -244,21 +350,22 @@ class latVal(degradval):
     @staticmethod
     def valConstraints(utype):
         return {'d':(90,180)
-              , 'r':(HALFPI,math.pi)}[utype]
+              , 'r':(HALFPI,math.pi)
+              , 'h':(6,12)}[utype]
 
     trails = (('n',1), ('N',1), ('s',-1), ('S',-1))
 
-    defaultFormat = 'ds;'
+    defaultLabel = 'lat '
 
-    defaultSingleFormat = 'lat {0:7.4f} {2}'
+    defaultSingleFormat = '{lab}{abs:7.4f} {schar}'
 
-    defaultMultiFormat = 'lat {0:d}:{2:02d}:{3:02d}.{4:02d} {5}'
+    defaultMultiFormat = '{lab}{abs:d}:{min:02d}:{sec:02d}.{hund:02d} {schar}'
 
     @staticmethod
     def trailsign(val):
         return 'N' if val >= 0 else 'S'
 
-class lonVal(degradval):
+class lonVal(latVal):
     """
     specialisation of degradval for longitude. 'E' & 'W' can be used to indicate sign on input strings
     and for formatting output strings. Value is constrained to +/- 180 degrees.
@@ -271,11 +378,7 @@ class lonVal(degradval):
 
     trails = (('e',1), ('E',1), ('w',-1), ('W',-1))
 
-    defaultFormat = 'ds;'
-
-    defaultSingleFormat = 'lon {0:7.4f} {2}'
-
-    defaultMultiFormat = 'lon {0:d}:{2:02d}:{3:02d}.{4:02d} {5}'
+    defaultLabel = 'lon '
 
     @staticmethod
     def trailsign(val):
@@ -288,15 +391,10 @@ class altVal(degradval):
     @staticmethod
     def valConstraints(utype):
         return {'d':(90,180)
-              , 'r':(HALFPI,math.pi)}[utype]
+              , 'r':(HALFPI,math.pi)
+              , 'h':(6,12)}[utype]
 
-    trails = tuple()
-
-    defaultFormat = 'ds;'
-
-    defaultSingleFormat = 'alt {0:7.4f} {2}'
-
-    defaultMultiFormat = 'alt {1:d}:{2:02d}:{3:02d}.{4:02d}'
+    defaultLabel = 'alt '
 
     @staticmethod
     def trailsign(val):
@@ -315,13 +413,7 @@ class azVal(degradval):
               , 'r':(math.pi, TWOPI)
               , 'h':(12,24)}[utype]
 
-    trails = tuple()
-
-    defaultFormat = 'ds;'
-
-    defaultSingleFormat = 'az {0:7.4f} {2}'
-
-    defaultMultiFormat = 'az {1:d}:{2:02d}:{3:02d}.{4:02d}'
+    defaultLabel = 'az '
 
     @staticmethod
     def trailsign(val):
@@ -330,29 +422,20 @@ class azVal(degradval):
         else:
             return 'ccw'
 
-class raVal(lonVal):
+class raVal(degradval):
     """
-    specialisation of lonVal for right ascension. 'Value is constrained to 0 - 1360 degrees.
+    specialisation of lonVal for right ascension. 'Value is constrained to 0 - 360 degrees.
     """
-    @staticmethod
-    def valConstraints(utype):
-        return {'d':(0,360)
-              , 'r':(0, TWOPI)
-              , 'h':(0,24)}[utype]
-
-    trails = tuple()
 
     defaultFormat = 'hx;'
 
-    defaultSingleFormat = 'RA {0:7.4f}'
-
-    defaultMultiFormat = 'RA {1:d}:{2:02d}:{3:02d}.{4:02d}'
-
+    defaultLabel = 'RA '
 
     @staticmethod
     def trailsign(val):
         return ''
-class decVal(latVal):
+
+class decVal(degradval):
     """
     specialisation of latVal for latitude. 'N' & 'S' can be used to indicate sign on input strings
     and for formatting output strings. Value is constrained to +/- 90 degrees.
@@ -365,46 +448,26 @@ class decVal(latVal):
 
     defaultFormat = 'dx;'
 
-    defaultSingleFormat = 'DEC {1:7.4f}'
-
-    defaultMultiFormat = 'DEC {1:d}:{2:02d}:{3:02d}.{4:02d}'
+    defaultLabel = 'DEC '
 
 class motorVal(degradval):
     """
     specialisation of degradval for motor angles. Value is constrained to 0 - 360 degrees.
     """
-    @staticmethod
-    def valConstraints(utype):
-        return {'d':(0,360)
-              , 'r':(0, TWOPI)
-              , 'h':(0,24)}[utype]
 
-    trails = tuple()
-
-    defaultFormat = 'dx;'
+    defaultFormat = 'ds;'
+    
+    defaultLabel = 'motor '
 
     @staticmethod
     def trailsign(val):
         return ''
 
-class hourVal(degradval):
+class hourVal(motorVal):
     """
     specialisation of degradval for hour angles. Value is constrained to 0 - 360 degrees.
     """
-    @staticmethod
-    def valConstraints(utype):
-        return {'h':(0,24)
-              , 'd':(0,360)
-              , 'r':(0,TWOPI)}[utype]
-
-    trails = tuple()
 
     defaultFormat = 'hx;'
-
-    defaultSingleFormat = 'hour {1:5.1f}'
-
-    defaultMultiFormat = 'hour {0:02d}:{2:02d}:{3:02d}.{4:02d}'
-
-    @staticmethod
-    def trailsign(val):
-        return ''
+    
+    defaultLabel = 'hour '
