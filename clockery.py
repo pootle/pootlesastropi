@@ -6,7 +6,6 @@ import math
 import datetime, time
 import pytz
 from tzlocal import get_localzone
-import stellarGeometry as sg
 
 class liveClock():
     """
@@ -161,7 +160,8 @@ class sidereal(localClocktime):
         """
         The offset can be provided as an earthLoc or as a lonVal or a simple period in seconds
         """
-        lonob = offset if isinstance(offset,sg.lonVal) else offset.lon if isinstance(offset,sg.earthLoc) else None
+        from stellarGeometry import lonVal, earthLoc
+        lonob = offset if isinstance(offset,lonVal) else offset.lon if isinstance(offset,earthLoc) else None
         if lonob is None:
             self.houroffset = 0
             if isinstance(offset,(int,float)):

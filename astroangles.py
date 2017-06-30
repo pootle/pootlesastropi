@@ -27,6 +27,8 @@ def FromString(fs):
         return raVal(parts[1])
     if typestr=='DEC':
         return decVal(parts[1])
+    if typestr=='move':
+        return moveVal(parts[1])
     raise ValueError
 
 class degradval():
@@ -244,7 +246,9 @@ class degradval():
                     newval = (int(colonsplit[0]) + int(colonsplit[1]) / 60 + float(colonsplit[2]) / 3600) * endsign
                 else:
                     newval = float(tstr) * endsign
+        return self._constrain(newval, utype)
 
+    def _constrain(self, newval, utype):
         offset, cyclic = self.valConstraints(utype)
         newval = (newval+offset)%cyclic-offset
         return newval, utype
@@ -293,26 +297,29 @@ class degradval():
                 sval = self.hour
             else:
                 raise ValueError('Invalid format source value specifier for degradval >%s<' % fspec)
-            if fmode == 's':
-                formparms={'abs':abs(sval), 'signed':sval, 'schar':self.trailsign(sval), 'lab': self.defaultLabel}
-                basestr = splitspec[1] if splitspec[1] else self.defaultSingleFormat
-            else:
-                posv = 1 if sval >= 0 else -1
-                prim, rest = divmod(abs(sval),1)
-                mins, rest = divmod(rest,1/60)
-                secs, fracs = divmod(rest,1/3600)
-                formparms = {
-                        'abs'    : int(prim)
-                      , 'signed' : int(prim)*posv
-                      , 'min'    : int(mins)
-                      , 'sec'    : int(secs)
-                      , 'frac'   : fracs * 3600
-                      , 'hund'   : round(fracs*360000)
-                      , 'schar'  : self.trailsign(posv)
-                      , 'lab'    : self.defaultLabel
-                    }
-                basestr = splitspec[1] if splitspec[1] else self.defaultMultiFormat
-            return basestr.format(**formparms)
+            if sval == sval:
+                if fmode == 's':
+                    formparms={'abs':abs(sval), 'signed':sval, 'schar':self.trailsign(sval), 'lab': self.defaultLabel}
+                    basestr = splitspec[1] if splitspec[1] else self.defaultSingleFormat
+                else:
+                    posv = 1 if sval >= 0 else -1
+                    prim, rest = divmod(abs(sval),1)
+                    mins, rest = divmod(rest,1/60)
+                    secs, fracs = divmod(rest,1/3600)
+                    formparms = {
+                            'abs'    : int(prim)
+                          , 'signed' : int(prim)*posv
+                          , 'min'    : int(mins)
+                          , 'sec'    : int(secs)
+                          , 'frac'   : fracs * 3600
+                          , 'hund'   : round(fracs*360000)
+                          , 'schar'  : self.trailsign(posv)
+                          , 'lab'    : self.defaultLabel
+                        }
+                    basestr = splitspec[1] if splitspec[1] else self.defaultMultiFormat
+                return basestr.format(**formparms)
+            else: # its NaN
+               return self.nanFormat
         else:
             return self.deg.__format__(fspec)
 
@@ -323,6 +330,8 @@ class degradval():
     defaultSingleFormat = '{lab}{signed:7.4f}'
 
     defaultMultiFormat = '{lab}{signed:3d}:{min:02d}:{sec:02d}.{hund:02d}'
+
+    nanFormat='-'
 
     trails = tuple()
 
@@ -462,6 +471,27 @@ class motorVal(degradval):
     @staticmethod
     def trailsign(val):
         return ''
+
+class moveVal(degradval):
+    """
+    specialisation of degradval to represent rotation by up to 1 turn +ve or -ve
+    """
+
+    defaultFormat = 'ds;'
+    
+    defaultLabel = 'rotate '
+    
+    @staticmethod
+    def trailsign(val):
+        return ''
+
+    def _constrain(self, newval, utype):
+       max = {'d':360, 'r':TWOPI,'h':24}[utype]
+       cval = abs(newval) % max
+       if newval < 0:
+           return -cval, utype
+       else:
+           return cval, utype
 
 class hourVal(motorVal):
     """
