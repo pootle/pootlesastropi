@@ -13,3 +13,5 @@ The modules so far provided are:
 
     clockery.py - a bunch of classes to represent different times - sidreal time, local time and Universal Time.
     
+    check_config.py - a command line program to display info about a camaera's settings as seen by python-gphoto2
+   
