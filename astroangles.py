@@ -282,6 +282,20 @@ class degradval():
             'frac'   : fractional part of a second (1/360000) as a float
             'schar'  : the sign character to use
             'lab'    : the standard label string
+            
+        >>> lv =aan.lonVal('10:30:45W')
+
+        >>> '{}'.format(lv)
+        'lon 10.5125 W'
+        
+        >>> '{:dd;}'.format(lv)
+       'lon 10:30:44.100 W'
+
+        >>> '{:ds;Longitude {{signed}}}'.format(lv)
+        'Longitude -10.512499999999989'
+        
+        '{:hd;Longitude {{signed}} hours, {{min}} minutes, {{sec}} seconds}'.format(lv)
+        'Longitude 0 hours, 42 minutes, 2 seconds'
         """
         fspec = formatspec if formatspec else self.defaultFormat
         splitspec = fspec.split(';',1)
@@ -323,6 +337,9 @@ class degradval():
         else:
             return self.deg.__format__(fspec)
 
+    def __str__(self):
+        return '{}'.format(self)
+
     defaultFormat = 'ds;'
     
     defaultLabel = ''
@@ -355,6 +372,30 @@ class latVal(degradval):
     """
     specialisation of degradval for latitude. 'N' & 'S' can be used to indicate sign on input strings
     and for formatting output strings. Value is constrained to +/- 90 degrees.
+    
+    initialisation:
+    ===============
+    
+    >>> lv = latVal(14.22)   # from a float
+    >>> print(lv)
+    lat 14.2200 N
+
+    >>> lv = latVal(-22.14)  ' from a signed float
+    >>> print(lv)
+    lat 22.1400 S
+    
+    >>> lv =aan.latVal('10:30:45')  # from a string
+    >>> print(lv)
+    lat 10.5125 N
+
+    >>> lv =aan.latVal('-10:30:45') # or a signed string 
+    >>> print(lv)
+    lat 10.5125 S
+
+    lv =aan.latVal('10:30:45S')     # or with N/S (or E/W where appropriate) )
+    >>> print(lv)
+    lat 10.5125 S
+
     """
     @staticmethod
     def valConstraints(utype):
