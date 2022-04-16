@@ -80,11 +80,7 @@ def main(output, compare, listvals, settings):
                     if cl is None:
                         print('%20s: %s' % (k,v))
                     else:
-                        if len(cl) < 7:
-                            print('%20s: %s (%s)' % (k,v, ', '.join(['%s' % v for v in cl])))
-                        else:
-                            print('%20s: %s (%s ... %s)' % (k,v,  ', '.join(['%s' % v for v in cl[:3]]),  ', '.join(['%s' % v for v in cl[-3:]])))
-                   
+                        print('%20s: %s (%s)' % (k,v, ', '.join(['%s' % v for v in cl])))
                 else:
                     print('%20s: %s' % (k,v))
     elif compare:

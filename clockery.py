@@ -5,7 +5,7 @@ clockery provides classes and functions for handling normal and sidereal time.
 import math
 import datetime, time
 import pytz
-from tzlocal import get_localzone
+#from tzlocal import get_localzone
 
 class liveClock():
     """
@@ -18,14 +18,14 @@ class liveClock():
         setup clocks by default they will show current time, but passing a timetuple like list will set the 
         clocks to start at that time in the local timezone
         """
-        self.tz = get_localzone()
+        self.tz = datetime.datetime.now().astimezone().tzinfo
         if timetuple:
             simplet = datetime.datetime(*timetuple)
             toffset = simplet.timestamp() - time.time()
         else:
             simplet = datetime.datetime.now()
             toffset = 0
-        currentdt = self.tz.localize(simplet, is_dst=None)
+        currentdt = simplet.astimezone()
         self.local = localClocktime(offset=toffset, withdt=currentdt)
         self.gmt = greenwichTime(offset=toffset, withdt=currentdt)
         self.lst = sidereal(offset=toffset if location is None else location, withdt=currentdt)
@@ -121,8 +121,9 @@ class localClocktime():
                 self.lz = adt.tzinfo
             return adt
         if self.lz is None:
-            self.lz = get_localzone()
-        return self.lz.localize(adt, is_dst=None)
+            adt = datetime.datetime.now().astimezone()
+            self.lz = adt.tzinfo
+        return adt
 
     def __str__(self):
         return self.defaultFormat.format(self)

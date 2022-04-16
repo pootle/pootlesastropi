@@ -171,7 +171,7 @@ class localEquatorial(twoCoords):
         Alternatively pass a tuple containing an observedCoord and a (latVal or earthLoc) and 
         the hour and, dec values are calculated from their contents.
         
-        Similarly proper stellar coordinates (right ascension / declination) to together with a sidereal clock can be used.
+        Similarly proper stellar coordinates (right ascension / declination) together with a sidereal clock can be used.
 
         See hourVal and decVal classes for details of string parsing.
     """
