@@ -247,7 +247,7 @@ class raDec(twoCoords):
 
         See raVal and decVal classes for details of string parsing.
     """
-    initVarInfo = (('ra', 'v1', hourVal),('dec', 'v2', decVal))    
+    initVarInfo = (('ra', 'v1', raVal),('dec', 'v2', decVal))    
 
     strFormat='raDec: {0:dx;}, {1:dx;}'
 
