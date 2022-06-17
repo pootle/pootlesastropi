@@ -73,6 +73,49 @@ class TBox(gui.VBox):
         except:
             return None
 
+import pathlib as pl
+
+class BetterFolderNavigator(gui.FileFolderNavigator):
+    def dir_go(self, widget):
+        # when the GO button is pressed, it is supposed that the pathEditor is changed
+        newpath = pl.Path(self.pathEditor.get_text())
+        if newpath.exists():
+            self.chdir(str(newpath))
+            return
+        try:
+            newpath.mkdir(parents=True)
+            self.chdir(str(newpath))
+            return
+        except:
+            print('error creating directory', file = sys.stderr)
+        self.pathEditor.set_text(self._last_valid_path)
+
+class BetterFileSelectionDialog(gui.GenericDialog):
+    """file selection dialog, it opens a new webpage allows the OK/CANCEL functionality
+    implementing the "confirm_value" and "cancel_dialog" events."""
+
+    def __init__(self, title='File dialog', message='Select files and folders',
+                 multiple_selection=True, selection_folder='.',
+                 allow_file_selection=True, allow_folder_selection=True, **kwargs):
+        super().__init__(title, message, **kwargs)
+
+        self.css_width = '475px'
+        self.filenav = BetterFolderNavigator(multiple_selection, selection_folder,
+                                                       allow_file_selection,
+                                                       allow_folder_selection, width="100%", height="330px")
+        self.add_field('fileFolderNavigator', self.filenav)
+        self.confirm_dialog.connect(self.confirm_value)
+
+    @gui.decorate_set_on_listener("(self, emitter, fileList)")
+    @gui.decorate_event
+    def confirm_value(self, widget):
+        """event called pressing on OK button.
+           propagates the string content of the input field
+        """
+        self.hide()
+        params = (self.filenav.get_selection_list(),)
+        return params
+
 tab_btn_style_1 = {'font-size': '2.4em', 'padding': '5px 15px 5px 15px', 'border-radius': '15px 15px 0px 0px', 'color': 'white', 'background': '#704040'}
 tab_btn_style_2 = {'font-size': '2.4em', 'padding': '5px 15px 5px 15px', 'border-radius': '15px 15px 0px 0px', 'color': 'white', 'background': '#409040'}
 tab_btn_style_3 = {'font-size': '2.4em', 'padding': '5px 15px 5px 15px', 'border-radius': '15px 15px 0px 0px', 'color': 'white', 'background': '#404080'}
