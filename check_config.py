@@ -38,7 +38,7 @@ def gp_widg_state(gpwidg):
     else:
         return [(gpwidg.get_name(), gpwidg.get_value())]
 
-def main(output, compare, listvals, settings):
+def main(output, compare, listvals, fixedlist, settings):
     cam=gp.Camera()
     try:
         cam.init()
@@ -60,7 +60,6 @@ def main(output, compare, listvals, settings):
             json.dump(cam_cfg, newvals, indent=3)
 
     if compare is None and output is None:
-        print('itsa', type(xxcam_cfg).__name__)
         for k,v in cam_cfg.items():
             if not settings or k in settings:
                 if listvals:
@@ -78,9 +77,13 @@ def main(output, compare, listvals, settings):
                             except:
                                 print('not for type', wt )
                     if cl is None:
-                        print('%20s: %s' % (k,v))
+                        if not fixedlist:
+                            print('%20s: %s' % (k,v))
                     else:
-                        print('%20s: %s (%s)' % (k,v, ', '.join(['%s' % v for v in cl])))
+                        if fixedlist:
+                            print("'%s': [%s]" % (k, ', '.join(["'%s'" % v for v in cl])))
+                        else:
+                            print('%20s: %s (%s)' % (k,v, ', '.join(['%s' % v for v in cl])))
                 else:
                     print('%20s: %s' % (k,v))
     elif compare:
@@ -189,12 +192,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='record / compare camera settings via gphoto2',
                                      epilog=epil,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('-o', '--output',  help='filename for current settings (json file)')
-    parser.add_argument('-c', '--compare', help='compare current settings with settings in this file')
-    parser.add_argument('-l', '--listvals',help='shows list of valid values for settings that support this',  default=False, action='store_true')
+    parser.add_argument('-o', '--output',       help='filename for current settings (json file)')
+    parser.add_argument('-c', '--compare',      help='compare current settings with settings in this file')
+    parser.add_argument('-l', '--listvals',     help='shows list of valid values for settings that support this',  default=False, action='store_true')
+    parser.add_argument('-f', '--fixedlist',    help='only list settings that have a preset list of values', default=False, action='store_true')
     parser.add_argument('settings', nargs = '*', help='restrict output to these settings')
     args=parser.parse_args()
 #    for k,v in args.__dict__.items():
 #        print('%28s: %s' % (k,v))
     sys.exit(main(**args.__dict__))
-
